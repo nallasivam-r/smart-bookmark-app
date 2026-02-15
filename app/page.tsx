@@ -18,9 +18,7 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
 
-  // ---------------------------
-  // Fetch bookmarks
-  // ---------------------------
+  // Fetch bookmarks for current user
   const fetchBookmarks = async (userId: string) => {
     const { data, error } = await supabase
       .from("bookmarks")
@@ -28,28 +26,17 @@ export default function Home() {
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error(error);
-      return;
-    }
-
+    if (error) return console.error(error);
     setBookmarks(data || []);
   };
 
-  // ---------------------------
-  // Realtime subscription
-  // ---------------------------
+  // Setup real-time subscription for bookmarks
   const setupRealtime = (userId: string): RealtimeChannel => {
     const channel = supabase
       .channel(`bookmarks-${userId}`)
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "bookmarks",
-          filter: `user_id=eq.${userId}`,
-        },
+        { event: "*", schema: "public", table: "bookmarks", filter: `user_id=eq.${userId}` },
         () => fetchBookmarks(userId)
       )
       .subscribe();
@@ -57,17 +44,12 @@ export default function Home() {
     return channel;
   };
 
-  // ---------------------------
-  // Auth & session handling
-  // ---------------------------
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
     const init = async () => {
       // Get current session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
 
       if (session?.user) {
         setUser(session.user);
@@ -83,7 +65,7 @@ export default function Home() {
 
     init();
 
-    // Listen for auth state changes
+    // Listen for auth changes and token refresh
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
@@ -104,56 +86,40 @@ export default function Home() {
     };
   }, []);
 
-  // ---------------------------
-  // Sign In
-  // ---------------------------
+  // Sign in with Google
   const signIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo:
-          process.env.NEXT_PUBLIC_VERCEL_URL || "http://localhost:3000",
+        redirectTo: process.env.NEXT_PUBLIC_VERCEL_URL || "http://localhost:3000",
       },
     });
 
     if (error) console.error("Google login error:", error.message);
   };
 
-  // ---------------------------
-  // Sign Out
-  // ---------------------------
+  // Sign out
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setBookmarks([]);
   };
 
-  // ---------------------------
-  // Add Bookmark
-  // ---------------------------
+  // Add new bookmark
   const addBookmark = async () => {
     if (!title || !url || !user) return;
 
     const { error } = await supabase.from("bookmarks").insert([
-      {
-        title,
-        url,
-        user_id: user.id,
-      },
+      { title, url, user_id: user.id },
     ]);
 
-    if (error) {
-      console.error(error);
-      return;
-    }
+    if (error) return console.error(error);
 
     setTitle("");
     setUrl("");
   };
 
-  // ---------------------------
-  // Delete Bookmark
-  // ---------------------------
+  // Delete bookmark
   const deleteBookmark = async (id: string) => {
     if (!user) return;
 
@@ -163,14 +129,10 @@ export default function Home() {
       .eq("id", id)
       .eq("user_id", user.id);
 
-    if (!error) {
-      await fetchBookmarks(user.id);
-    }
+    if (!error) await fetchBookmarks(user.id);
   };
 
-  // ---------------------------
-  // UI
-  // ---------------------------
+  // ---------------- UI ----------------
   if (!user) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -236,7 +198,6 @@ export default function Home() {
             >
               {bookmark.title}
             </a>
-
             <button
               onClick={() => deleteBookmark(bookmark.id)}
               className="text-red-500"
