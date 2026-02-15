@@ -75,9 +75,7 @@ export default function Home() {
         channel = setupRealtime(session.user.id);
       }
 
-      // ---------------------------
-      // Clean URL after OAuth login
-      // ---------------------------
+      // Clean URL hash after OAuth login
       if (window.location.hash.includes("access_token")) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
@@ -85,7 +83,7 @@ export default function Home() {
 
     init();
 
-    // Listen for auth changes (sign-in, token refresh, sign-out)
+    // Listen for auth state changes
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
