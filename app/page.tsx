@@ -18,9 +18,7 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
 
-  // ---------------------------
-  // Fetch bookmarks for current user
-  // ---------------------------
+  // Fetch bookmarks
   const fetchBookmarks = async (userId: string) => {
     const { data, error } = await supabase
       .from("bookmarks")
@@ -32,9 +30,7 @@ export default function Home() {
     setBookmarks(data || []);
   };
 
-  // ---------------------------
-  // Setup realtime subscription
-  // ---------------------------
+  // Realtime subscription
   const setupRealtime = (userId: string): RealtimeChannel => {
     return supabase
       .channel(`bookmarks-${userId}`)
@@ -46,9 +42,6 @@ export default function Home() {
       .subscribe();
   };
 
-  // ---------------------------
-  // Init session and listen for auth
-  // ---------------------------
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
@@ -64,7 +57,7 @@ export default function Home() {
         channel = setupRealtime(session.user.id);
       }
 
-      // Clean OAuth hash if present
+      // Clean OAuth redirect hash if present
       if (window.location.hash.includes("access_token")) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
@@ -72,7 +65,7 @@ export default function Home() {
 
     init();
 
-    // Listen for auth changes
+    // Auth state change listener
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
@@ -95,14 +88,12 @@ export default function Home() {
     };
   }, []);
 
-  // ---------------------------
-  // Google Sign In
-  // ---------------------------
+  // Google sign in
   const signIn = async () => {
-    const redirectUrl =
-      process.env.NEXT_PUBLIC_VERCEL_URL
-        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-        : "http://localhost:3000";
+    // Use exact URL depending on environment
+    const redirectUrl = process.env.NEXT_PUBLIC_VERCEL_URL
+      ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+      : "http://localhost:3000";
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -112,49 +103,37 @@ export default function Home() {
     if (error) console.error("Google login error:", error.message);
   };
 
-  // ---------------------------
-  // Sign Out
-  // ---------------------------
+  // Sign out
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setBookmarks([]);
   };
 
-  // ---------------------------
-  // Add Bookmark
-  // ---------------------------
+  // Add bookmark
   const addBookmark = async () => {
     if (!title || !url || !user) return;
-
     const { error } = await supabase
       .from("bookmarks")
       .insert([{ title, url, user_id: user.id }]);
-
     if (error) return console.error(error);
 
     setTitle("");
     setUrl("");
   };
 
-  // ---------------------------
-  // Delete Bookmark
-  // ---------------------------
+  // Delete bookmark
   const deleteBookmark = async (id: string) => {
     if (!user) return;
-
     const { error } = await supabase
       .from("bookmarks")
       .delete()
       .eq("id", id)
       .eq("user_id", user.id);
-
     if (!error) await fetchBookmarks(user.id);
   };
 
-  // ---------------------------
-  // UI
-  // ---------------------------
+  // ---------------- UI ----------------
   if (!user) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -177,7 +156,6 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Add Bookmark */}
       <div className="mb-4 space-y-2">
         <input
           type="text"
@@ -201,16 +179,12 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Bookmark List */}
       <div className="space-y-3">
         {bookmarks.length === 0 && (
           <p className="text-gray-500 text-center">No bookmarks yet. Add one!</p>
         )}
         {bookmarks.map((bookmark) => (
-          <div
-            key={bookmark.id}
-            className="border p-3 rounded flex justify-between items-center"
-          >
+          <div key={bookmark.id} className="border p-3 rounded flex justify-between items-center">
             <a
               href={bookmark.url}
               target="_blank"
