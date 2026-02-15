@@ -18,7 +18,9 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
 
-  //  Fetch bookmarks
+  // ---------------------------
+  // Fetch bookmarks
+  // ---------------------------
   const fetchBookmarks = async (userId: string) => {
     const { data, error } = await supabase
       .from("bookmarks")
@@ -34,7 +36,9 @@ export default function Home() {
     setBookmarks(data || []);
   };
 
-  //  Setup Realtime (Typed)
+  // ---------------------------
+  // Realtime subscription
+  // ---------------------------
   const setupRealtime = (userId: string): RealtimeChannel => {
     const channel = supabase
       .channel(`bookmarks-${userId}`)
@@ -46,54 +50,81 @@ export default function Home() {
           table: "bookmarks",
           filter: `user_id=eq.${userId}`,
         },
-        () => {
-          fetchBookmarks(userId);
-        }
+        () => fetchBookmarks(userId)
       )
       .subscribe();
 
     return channel;
   };
 
-  //  Single useEffect
+  // ---------------------------
+  // Auth & session handling
+  // ---------------------------
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
     const init = async () => {
-      const { data } = await supabase.auth.getUser();
-      const currentUser = data.user;
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
 
-      if (currentUser) {
-        setUser(currentUser);
-        await fetchBookmarks(currentUser.id);
-        channel = setupRealtime(currentUser.id);
+      if (session?.user) {
+        setUser(session.user);
+        await fetchBookmarks(session.user.id);
+        channel = setupRealtime(session.user.id);
       }
     };
 
     init();
 
-    return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
+    // Listen for auth changes (sign-in, token refresh, sign-out)
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          if (session?.user) {
+            setUser(session.user);
+            await fetchBookmarks(session.user.id);
+          }
+        } else if (event === "SIGNED_OUT") {
+          setUser(null);
+          setBookmarks([]);
+        }
       }
+    );
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+      authListener.subscription.unsubscribe();
     };
   }, []);
 
-  //  Sign In
+  // ---------------------------
+  // Sign In
+  // ---------------------------
   const signIn = async () => {
-    await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
+      options: {
+        redirectTo:
+          process.env.NEXT_PUBLIC_VERCEL_URL ||
+          "http://localhost:3000", // fallback
+      },
     });
+
+    if (error) console.error("Google login error:", error.message);
   };
 
-  //  Sign Out
+  // ---------------------------
+  // Sign Out
+  // ---------------------------
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setBookmarks([]);
   };
 
-  //  Add Bookmark
+  // ---------------------------
+  // Add Bookmark
+  // ---------------------------
   const addBookmark = async () => {
     if (!title || !url || !user) return;
 
@@ -114,25 +145,26 @@ export default function Home() {
     setUrl("");
   };
 
-  //  Delete Bookmark
-const deleteBookmark = async (id: string) => {
-  if (!user) return;
+  // ---------------------------
+  // Delete Bookmark
+  // ---------------------------
+  const deleteBookmark = async (id: string) => {
+    if (!user) return;
 
-  const { error } = await supabase
-    .from("bookmarks")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
+    const { error } = await supabase
+      .from("bookmarks")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
 
-  if (!error) {
-    await fetchBookmarks(user.id); //  Force refresh
-  }
-};
+    if (!error) {
+      await fetchBookmarks(user.id);
+    }
+  };
 
   // ---------------------------
   // UI
   // ---------------------------
-
   if (!user) {
     return (
       <div className="flex h-screen items-center justify-center">
