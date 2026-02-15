@@ -65,12 +65,21 @@ export default function Home() {
 
     const init = async () => {
       // Get current session
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (session?.user) {
         setUser(session.user);
         await fetchBookmarks(session.user.id);
         channel = setupRealtime(session.user.id);
+      }
+
+      // ---------------------------
+      // Clean URL after OAuth login
+      // ---------------------------
+      if (window.location.hash.includes("access_token")) {
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
     };
 
@@ -105,8 +114,7 @@ export default function Home() {
       provider: "google",
       options: {
         redirectTo:
-          process.env.NEXT_PUBLIC_VERCEL_URL ||
-          "http://localhost:3000", // fallback
+          process.env.NEXT_PUBLIC_VERCEL_URL || "http://localhost:3000",
       },
     });
 
@@ -214,9 +222,7 @@ export default function Home() {
       {/* Bookmark List */}
       <div className="space-y-3">
         {bookmarks.length === 0 && (
-          <p className="text-gray-500 text-center">
-            No bookmarks yet. Add one!
-          </p>
+          <p className="text-gray-500 text-center">No bookmarks yet. Add one!</p>
         )}
 
         {bookmarks.map((bookmark) => (
