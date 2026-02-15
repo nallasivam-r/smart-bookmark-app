@@ -18,29 +18,32 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
 
-  // Fetch bookmarks for current user
+  // Fetch bookmarks
   const fetchBookmarks = async (userId: string) => {
     const { data, error } = await supabase
       .from("bookmarks")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
-
-    if (error) return console.error(error);
+    if (error) console.error(error);
     setBookmarks(data || []);
   };
 
-  // Setup real-time subscription for bookmarks
+  // Realtime subscription
   const setupRealtime = (userId: string): RealtimeChannel => {
     const channel = supabase
       .channel(`bookmarks-${userId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "bookmarks", filter: `user_id=eq.${userId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "bookmarks",
+          filter: `user_id=eq.${userId}`,
+        },
         () => fetchBookmarks(userId)
       )
       .subscribe();
-
     return channel;
   };
 
@@ -48,8 +51,10 @@ export default function Home() {
     let channel: RealtimeChannel | null = null;
 
     const init = async () => {
-      // Get current session
-      const { data: { session } } = await supabase.auth.getSession();
+      // Get current session (handles OAuth redirect automatically)
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (session?.user) {
         setUser(session.user);
@@ -57,7 +62,7 @@ export default function Home() {
         channel = setupRealtime(session.user.id);
       }
 
-      // Clean URL hash after OAuth login
+      // Clean URL hash manually
       if (window.location.hash.includes("access_token")) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
@@ -65,7 +70,7 @@ export default function Home() {
 
     init();
 
-    // Listen for auth changes and token refresh
+    // Auth state change listener
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
@@ -86,7 +91,7 @@ export default function Home() {
     };
   }, []);
 
-  // Sign in with Google
+  // Sign In
   const signIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -94,45 +99,36 @@ export default function Home() {
         redirectTo: process.env.NEXT_PUBLIC_VERCEL_URL || "http://localhost:3000",
       },
     });
-
     if (error) console.error("Google login error:", error.message);
   };
 
-  // Sign out
+  // Sign Out
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setBookmarks([]);
   };
 
-  // Add new bookmark
+  // Add Bookmark
   const addBookmark = async () => {
     if (!title || !url || !user) return;
-
-    const { error } = await supabase.from("bookmarks").insert([
-      { title, url, user_id: user.id },
-    ]);
-
-    if (error) return console.error(error);
-
+    const { error } = await supabase.from("bookmarks").insert([{ title, url, user_id: user.id }]);
+    if (error) console.error(error);
     setTitle("");
     setUrl("");
   };
 
-  // Delete bookmark
+  // Delete Bookmark
   const deleteBookmark = async (id: string) => {
     if (!user) return;
-
     const { error } = await supabase
       .from("bookmarks")
       .delete()
       .eq("id", id)
       .eq("user_id", user.id);
-
     if (!error) await fetchBookmarks(user.id);
   };
 
-  // ---------------- UI ----------------
   if (!user) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -155,7 +151,6 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Add Bookmark */}
       <div className="mb-4 space-y-2">
         <input
           type="text"
@@ -179,17 +174,10 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Bookmark List */}
       <div className="space-y-3">
-        {bookmarks.length === 0 && (
-          <p className="text-gray-500 text-center">No bookmarks yet. Add one!</p>
-        )}
-
+        {bookmarks.length === 0 && <p className="text-gray-500 text-center">No bookmarks yet. Add one!</p>}
         {bookmarks.map((bookmark) => (
-          <div
-            key={bookmark.id}
-            className="border p-3 rounded flex justify-between items-center"
-          >
+          <div key={bookmark.id} className="border p-3 rounded flex justify-between items-center">
             <a
               href={bookmark.url}
               target="_blank"
