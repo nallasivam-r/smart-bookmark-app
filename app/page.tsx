@@ -19,7 +19,7 @@ export default function Home() {
   const [url, setUrl] = useState("");
 
   // ---------------------------
-  // Fetch bookmarks for current user
+  // Fetch bookmarks for a user
   // ---------------------------
   const fetchBookmarks = async (userId: string) => {
     const { data, error } = await supabase
@@ -33,10 +33,10 @@ export default function Home() {
   };
 
   // ---------------------------
-  // Setup realtime subscription
+  // Setup Realtime channel
   // ---------------------------
   const setupRealtime = (userId: string): RealtimeChannel => {
-    return supabase
+    const channel = supabase
       .channel(`bookmarks-${userId}`)
       .on(
         "postgres_changes",
@@ -44,54 +44,52 @@ export default function Home() {
         () => fetchBookmarks(userId)
       )
       .subscribe();
+
+    return channel;
   };
 
   // ---------------------------
-  // Init session and listen for auth
+  // Init user session
   // ---------------------------
   useEffect(() => {
     let channel: RealtimeChannel | null = null;
 
     const init = async () => {
-      // Get session on page load
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUser(session.user);
-        await fetchBookmarks(session.user.id);
-        channel = setupRealtime(session.user.id);
+      // 1️⃣ Get current user from Supabase
+      const { data } = await supabase.auth.getUser();
+      const currentUser = data.user;
+
+      if (currentUser) {
+        setUser(currentUser);
+        await fetchBookmarks(currentUser.id);
+        channel = setupRealtime(currentUser.id);
       }
 
-      // Remove OAuth hash in URL (after login redirect)
-      if (window.location.hash.includes("access_token")) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    };
-
-    init();
-
-    // Listen for token refresh / sign-in events
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
-          setUser(session.user);
-          await fetchBookmarks(session.user.id);
-          if (!channel) channel = setupRealtime(session.user.id);
+      // 2️⃣ Listen for auth state changes (handles token refresh automatically)
+      supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          if (session?.user) {
+            setUser(session.user);
+            await fetchBookmarks(session.user.id);
+            if (!channel) channel = setupRealtime(session.user.id);
+          }
         } else if (event === "SIGNED_OUT") {
           setUser(null);
           setBookmarks([]);
           if (channel) supabase.removeChannel(channel);
         }
-      }
-    );
+      });
+    };
+
+    init();
 
     return () => {
       if (channel) supabase.removeChannel(channel);
-      authListener.subscription.unsubscribe();
     };
   }, []);
 
   // ---------------------------
-  // Google Sign In
+  // Google Sign In (Vercel ready)
   // ---------------------------
   const signIn = async () => {
     const redirectUrl =
@@ -122,9 +120,13 @@ export default function Home() {
   const addBookmark = async () => {
     if (!title || !url || !user) return;
 
-    const { error } = await supabase
-      .from("bookmarks")
-      .insert([{ title, url, user_id: user.id }]);
+    const { error } = await supabase.from("bookmarks").insert([
+      {
+        title,
+        url,
+        user_id: user.id,
+      },
+    ]);
 
     if (error) return console.error(error);
 
@@ -201,6 +203,7 @@ export default function Home() {
         {bookmarks.length === 0 && (
           <p className="text-gray-500 text-center">No bookmarks yet. Add one!</p>
         )}
+
         {bookmarks.map((bookmark) => (
           <div
             key={bookmark.id}
@@ -214,6 +217,7 @@ export default function Home() {
             >
               {bookmark.title}
             </a>
+
             <button
               onClick={() => deleteBookmark(bookmark.id)}
               className="text-red-500"
